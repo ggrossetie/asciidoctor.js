@@ -2245,6 +2245,14 @@ content`, options)
     })
   })
 
+  describe('Normalizing system path', () => {
+    it('should handle UNC path (normalized)', () => {
+      const doc = asciidoctor.load('', { safe: 'unsafe' })
+      const path = doc['$normalize_system_path']('style.css', '//wnfs1/groups/projects/docs/styles')
+      expect(path).to.equal('//wnfs1/groups/projects/docs/styles/style.css')
+    })
+  })
+
   describe('Registering converter', () => {
     afterEach(() => {
       asciidoctor.ConverterFactory.unregisterAll()

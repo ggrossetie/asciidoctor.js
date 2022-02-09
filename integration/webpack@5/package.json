@@ -1,0 +1,17 @@
+{
+  "name": "@asciidoctor/integration-webpack5",
+  "private": true,
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@asciidoctor/core": "file:../../packages/core/asciidoctor-core-3.0.0-dev.tgz",
+    "webpack": "^5.68.0",
+    "webpack-cli": "^4.9.2"
+  }
+}

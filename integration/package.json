@@ -10,7 +10,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "devDependencies": {
-    "verdaccio": "^5.5.2"
+  "dependencies": {
+    "@asciidoctor/core": "file:../packages/core/asciidoctor-core-3.0.0-dev.tgz"
   }
 }

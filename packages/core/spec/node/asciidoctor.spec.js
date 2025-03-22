@@ -27,6 +27,7 @@ import shoutBlock from '../share/extensions/shout-block.cjs'
 import chartBlockMacro from '../share/extensions/chart-block.cjs'
 import smileyInlineMacro from '../share/extensions/smiley-inline-macro.cjs'
 import loremBlockMacro from '../share/extensions/lorem-block-macro.cjs'
+import { preprocess } from '../../src/asciidoctor-preprocessor.js'
 
 const expect = chai.expect
 chai.use(dirtyChai)
@@ -3112,4 +3113,21 @@ include::${buildFolder}/packages/core/spec/fixtures/include.adoc[]`
       })
     })
   }
+
+  describe('Preprocessor', () => {
+    it('should preprocess the document', () => {
+      const doc = `= Title
+:github-env:
+:help-doc: gitlab.adoc
+
+ifdef::env-github[]
+:help-doc: github.adoc
+endif::[]
+
+include::{help-doc}[]
+`
+      const result = preprocess(doc)
+      console.log({ result })
+    })
+  })
 })

@@ -51,7 +51,7 @@ export namespace BlockProcessorDsl {
 }
 export namespace MacroProcessorDsl {
     /**
-     * Override: passing a falsy value sets content_model to :text instead of
+     * Override: passing a falsy value sets content_model to 'text' instead of
      * configuring positional attributes.
      *
      * @param {...*} args - Positional attribute specifications.
@@ -105,16 +105,23 @@ export class Processor {
      *
      * @param {Section|Document} parent - The parent Section or Document of this new Section.
      * @param {string} title - The String title of the new Section.
-     * @param {object} attrs - A plain object of attributes to control how the section is built.
+     * @param {{ style?: string, id?: string | false, [key: string]: unknown }} attrs - A plain object of attributes to control how the section is built.
      *   Use the style attribute to set the name of a special section (e.g. appendix).
      *   Use the id attribute to assign an explicit ID, or set it to false to
      *   disable automatic ID generation (when sectids document attribute is set).
-     * @param {object} [opts={}] - An optional plain object of options:
-     *   - level {number} - The Integer level to assign; defaults to parent.level + 1.
-     *   - numbered {boolean} - Flag to force numbering.
+     * @param {object} [opts={}] - An optional plain object of options.
+     * @param {number} [opts.level] - The level to assign to the section; defaults to parent.level + 1.
+     * @param {boolean} [opts.numbered] - Whether to number the section; overrides the sectnums/partnums document attribute.
      * @returns {Section} a Section node with all properties properly initialized.
      */
-    createSection(parent: Section | Document, title: string, attrs: object, opts?: object): Section;
+    createSection(parent: Section | Document, title: string, attrs: {
+        style?: string;
+        id?: string | false;
+        [key: string]: unknown;
+    }, opts?: {
+        level?: number;
+        numbered?: boolean;
+    }): Section;
     /**
      * Create a generic block node and link it to the specified parent.
      *

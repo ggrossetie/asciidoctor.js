@@ -8,6 +8,10 @@ For a detailed view of what has changed, refer to the {uri-repo}/commits/main[co
 
 == Unreleased
 
+Bug Fixes::
+
+* Fix the `document` field/`getDocument()`/`getConverter()` JSDoc on `AbstractNode` (and the generated `.d.ts` for `AbstractNode` and `Table.Cell`) referring to the ambient DOM `Document` type instead of Asciidoctor's own `Document` class from `document.js`. TypeScript resolved the unqualified `Document` name to `lib.dom.d.ts`, so `node.getDocument()` was typed as the browser DOM document rather than the Asciidoctor document, silently defeating type checking on any code that called Asciidoctor `Document` methods on the result
+
 Improvements::
 
 * Export `Severity` (`{ DEBUG, INFO, WARN, ERROR, FATAL, UNKNOWN }`) from `@asciidoctor/core`'s public API (`index.js` and `browser.js`). Previously the constant existed only inside `logging.js` and was not re-exported, so a custom logger built with `LoggerManager.newLogger(name, { add })` had no way to compare the (already-numeric) `severity` argument against named levels without redeclaring the map by hand

@@ -10,7 +10,7 @@ For a detailed view of what has changed, refer to the {uri-repo}/commits/main[co
 
 Bug Fixes::
 
-* Fix the `document` field/`getDocument()`/`getConverter()` JSDoc on `AbstractNode` (and the generated `.d.ts` for `AbstractNode` and `Table.Cell`) referring to the ambient DOM `Document` type instead of Asciidoctor's own `Document` class from `document.js`. TypeScript resolved the unqualified `Document` name to `lib.dom.d.ts`, so `node.getDocument()` was typed as the browser DOM document rather than the Asciidoctor document, silently defeating type checking on any code that called Asciidoctor `Document` methods on the result
+* Fix JSDoc `Document` type references across `abstract_node.js`, `extensions.js`, `parser.js`, `syntax_highlighter.js`, and `table.js` (and the corresponding generated `.d.ts` files) resolving to the ambient DOM `Document` type instead of Asciidoctor's own `Document` class from `document.js`. None of those source files imported `Document`, so TypeScript resolved the unqualified name to `lib.dom.d.ts` — `getDocument()`, extension processor callbacks (`Preprocessor#process()`, `TreeProcessor#process()`, etc.), `Parser` methods, `SyntaxHighlighterBase` methods, and `Table.Cell#getInnerDocument()` were all typed against the browser DOM document rather than the Asciidoctor document, silently defeating type checking on any code calling Asciidoctor `Document` methods on the result
 
 Improvements::
 

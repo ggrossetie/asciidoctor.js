@@ -20,6 +20,7 @@ Improvements::
 Infrastructure::
 
 * Add compile-only type tests (`test/types/logging.test-d.ts`) covering the `Logger` constructor's `pipe` option (both the object `{write}` form and the severity-aware `(line, severity)` function form, plus a negative `@ts-expect-error` case for an invalid `pipe` value) and `LoggerManager.newLogger()`'s `add`/`postConstruct` override shape
+* Add compile-only type tests (`test/types/document_type.test-d.ts`) guarding against the `Document` DOM-leak regression above, covering `AbstractNode#getDocument()`, `Preprocessor`/`TreeProcessor`/`Postprocessor`/`IncludeProcessor`/`DocinfoProcessor`'s `process()`/`handles()`, `Registry#activate()`, and `SyntaxHighlighterBase`'s `docinfo()`/`writeStylesheet()`/`writeStylesheetToDisk()`
 
 == v4.0.7 (2026-07-31)
 

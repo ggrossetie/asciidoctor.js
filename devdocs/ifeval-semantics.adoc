@@ -1,0 +1,272 @@
+= `ifeval` expression semantics — proposed rules
+:toc:
+:toc-title: Contents
+
+This document proposes a precise, implementation-independent definition of the expression accepted by the `ifeval::[…]` preprocessor directive.
+It is meant to be implemented in Asciidoctor.js, ported to Asciidoctor (Ruby), and proposed to the AsciiDoc Language specification.
+
+[IMPORTANT]
+====
+*Status: proposal.*
+The current behavior of both implementations is not a set of rules: it is whatever the host language does when its native comparison operators are applied to loosely typed values.
+The two implementations already disagree on 13 of 25 probed expressions, and several results are wrong in both (see <<current>>).
+====
+
+[#current]
+== Current behavior
+
+Asciidoctor (Ruby) evaluates `(resolve_expr_val lhs).send op, (resolve_expr_val rhs)` and treats any exception as "false".
+`resolve_expr_val` strips quotes, substitutes attribute references, and turns every unquoted operand into a number with `String#to_i` / `String#to_f`.
+Asciidoctor.js ports the same structure with `parseInt` / `parseFloat` and JavaScript comparison operators (`#resolveExprVal` / `#evalOp` in `packages/core/src/reader.js`).
+
+As a consequence, the result of an expression is dictated by the implementation language, not by a rule an author could know.
+Probes run against Asciidoctor (Ruby) 2.0.20 and Asciidoctor.js 4.1.1 (`level=high`, `v=2.0.1`, `missing` undefined; "true" means the guarded content is rendered):
+
+[cols="2m,1,1,3"]
+|===
+|Expression |Ruby |JS |Why
+
+|{level} == 0
+|true
+|false
+|Ruby: `"high".to_i` is 0. JS: `parseInt("high")` is `NaN`.
+
+|{level} == low
+|*true*
+|false
+|Ruby: every word is 0, so `high == low`.
+
+|1_000 == 1000
+|true
+|false
+|Ruby's `to_i` accepts `+_+` separators, `parseInt` stops at `+_+`.
+
+|{v} == 2
+|*true*
+|*true*
+|`2.0.1` is coerced to the number 2.
+
+|"a<b" == "a<b"
+|*false*
+|*false*
+|The expression is split at the first `<`, even inside quotes.
+
+|"x" == 'x'
+|*false*
+|true
+|Ruby keeps the closing quote (`val.slice 1, (val.length - 1)`): `x"` vs. `x'`.
+
+|true != "true"
+|true
+|*false*
+|JS throws on any boolean/non-boolean mix, `!=` included.
+
+|false < true
+|false
+|*true*
+|Ruby cannot order booleans; JS can.
+
+|{missing} < 1
+|false
+|*true*
+|Ruby: `nil < 1` raises. JS: `null < 1` coerces `null` to 0.
+
+|"5" < 10
+|false
+|*true*
+|Ruby raises on String vs. Integer; JS coerces `"5"` to 5.
+
+|"10.0.0" > "9.0.0"
+|*false*
+|*false*
+|Lexicographic comparison: `"1" < "9"`.
+
+|1 \| 2
+|*content rendered*
+|*content rendered*
+|A malformed expression pushes no conditional: the content is shown and `endif` is reported as unmatched.
+|===
+
+Every bold cell is a result no author would predict from the expression alone.
+
+== Design principles
+
+. *The type of an operand comes from how it is written, never from the host language.*
+No implicit coercion between types; no language-specific number parsing.
+. *Quoting means "this is text".*
+A quoted operand is always a string, whatever it contains.
+An unquoted operand is interpreted: number, version, boolean, or text.
+. *Every expression has a defined result.*
+Comparisons that make no sense are reported, not silently mapped to an arbitrary boolean.
+. *A broken condition never leaks content.*
+. *The common idioms keep working*: `"{attr}" == "value"`, `{count} > 3`, `'{attr}' == ''` to test for a missing attribute, and comparing `{asciidoctor-version}`.
+
+== Rules
+
+=== 1. Grammar
+
+The bracket content of `ifeval::[…]` must match:
+
+[source,abnf]
+----
+ifeval-expr = *WSP operand *WSP operator *WSP operand *WSP
+operator    = "==" / "!=" / "<=" / ">=" / "<" / ">"
+operand     = dq-string / sq-string / bare
+dq-string   = DQUOTE *( %x00-21 / %x23-10FFFF ) DQUOTE   ; no " inside
+sq-string   = "'" *( %x00-26 / %x28-10FFFF ) "'"         ; no ' inside
+bare        = 1*bare-char
+bare-char   = <any character except WSP, DQUOTE, "'", "=", "!", "<" and ">">
+----
+
+The expression is tokenized from left to right: a quoted operand extends to its matching closing quote, so operator characters inside quotes belong to the string (`"a<b" == "a<b"` is a valid expression).
+Attribute references are part of the operand text (`{name}` contains none of the excluded characters).
+An expression that does not match the grammar is *malformed* (rule 5).
+
+=== 2. Operand evaluation
+
+Attribute references are substituted *after* tokenization, so an attribute value can never change the structure of the expression.
+
+[cols="1,3"]
+|===
+|Operand |Value
+
+|Quoted (`"…"` or `'…'`)
+|The two delimiting quotes are removed (both of them, and only them), then attribute references are substituted; a missing reference contributes the empty string.
+The value is a *string*, even if it looks like a number.
+
+|Bare
+|Attribute references are substituted; a missing reference contributes nothing.
+The result is then typed:
+
+* empty → *none* (the value of an undefined attribute);
+* `true` or `false` → *boolean*;
+* `[+-]? DIGIT+ ( "." DIGIT+ )?` → *number* (integers and decimals are the same type: `1 == 1.0`);
+* `DIGIT+ ( "." DIGIT+ ){2,}` → *version* (three or more dot-separated integers, e.g. `2.0.1`);
+* anything else → *string* (a bare word is text: `{level} == high`).
+|===
+
+Numbers are decimal only: no digit separators, exponents, hexadecimal, or leading dot.
+Such operands are strings (`1_000`, `1e3`, `0x10`, `.5`).
+
+=== 3. Comparison
+
+[cols="2,3,3"]
+|===
+|Operand types |`==` / `!=` |`<` `\<=` `>` `>=`
+
+|number, number
+|numeric equality
+|numeric order
+
+|string, string
+|exact equality (Unicode code points)
+|lexicographic order by Unicode code point
+
+|version, version
+|segment-wise equality, missing trailing segments count as 0 (`1.2.0 == 1.2.0.0`)
+|segment-wise numeric order (`10.0.0 > 9.0.0`)
+
+|version, number
+|the number is read as a version (`2.5` → `2.5.0`)
+|the number is read as a version
+
+|boolean, boolean
+|equality
+|*type error*
+
+|none, none
+|equal
+|*type error*
+
+|any other combination
+|never equal (`==` is false, `!=` is true)
+|*type error*
+|===
+
+A *type error* makes the condition false and is reported as a warning: `ifeval: cannot compare <type> with <type>` with the source location of the directive.
+Equality never raises: values of different types are simply unequal.
+
+=== 4. Missing attributes
+
+Inside a quoted operand, a missing reference is the empty string: `'{foo}' == ''` keeps testing "is `foo` unset or empty".
+As a whole bare operand, a missing reference is *none*: `{foo} == {bar}` is true when both are unset, and `{foo} < 1` is a type error rather than a silent "0 < 1".
+The `attribute-missing` setting does not apply to `ifeval` operands; the behavior above is fixed so that the result of an expression does not depend on a document-wide setting.
+
+=== 5. Malformed expressions
+
+A malformed `ifeval` (no expression, a target, or an expression outside the grammar) is reported as an error, as today.
+In addition, it opens a conditional whose condition is *false*: the guarded content is skipped and the matching `endif::[]` closes it normally.
+Today the content is rendered and the `endif` is reported as unmatched, i.e. a typo in a condition publishes the content it was meant to hide.
+
+== Worked examples
+
+`level=high`, `v=2.0.1`, `missing` undefined.
+
+[cols="2m,1,1,1,3"]
+|===
+|Expression |Ruby |JS |Proposed |Rule
+
+|{level} == 0 |true |false |false |string vs. number: never equal
+|{level} == high |true |false |true |bare word is a string
+|{level} == low |true |false |false |bare word is a string
+|"{level}" == "high" |true |true |true |unchanged idiom
+|1_000 == 1000 |true |false |false |`1_000` is a string
+|1 == 1.0 |true |true |true |one number type
+|5 < 10 |true |true |true |numeric order
+|"5" < "10" |false |false |false |quoted = string, lexicographic
+|"5" < 10 |false |true |false + warning |type error
+|{v} >= 2 |true |true |true |version vs. number
+|{v} == 2 |true |true |false |`2.0.1` ≠ `2.0.0`
+|10.0.0 > 9.0.0 |true |true |true |version order
+|"10.0.0" > "9.0.0" |false |false |false |quoted = string (drop the quotes to compare versions)
+|"x" == 'x' |false |true |true |both quotes removed
+|"a<b" == "a<b" |false |false |true |quote-aware tokenization
+|true != "true" |true |false |true |equality never raises
+|false < true |false |true |false + warning |booleans are not ordered
+|{missing} == {missing} |true |true |true |none equals none
+|{missing} < 1 |false |true |false + warning |none is not ordered
+|'{missing}' == '' |true |true |true |unchanged idiom
+|1 \| 2 |content rendered |content rendered |content skipped + error |malformed = false
+|===
+
+== Compatibility
+
+Results that change for existing documents, and how to keep the old intent:
+
+* *Unquoted non-numeric values compared to numbers* (`{level} == 0`): Ruby made every word equal to 0.
+No document can meaningfully rely on that; compare to the word itself.
+* *Numbers with `_`, exponents, hexadecimal or a leading dot*: now strings.
+Write plain decimals.
+* *Versions*: a bare `N.N.N` is now a version.
+`{asciidoctor-version} >= 2.0.0` becomes correct for every version (including `10.0.0`), and `{v} == 2` is no longer true for `2.0.1`.
+Quoted versions keep the current (lexicographic) behavior.
+* *Two-component values such as `1.10`* remain numbers (`1.10` = 1.1 < 1.9), as today.
+Write `1.10.0` to compare as a version.
+* *Ordering with booleans, none, or mixed types*: still false in Ruby, now also in JS, and reported.
+* *Malformed expressions*: the guarded content is no longer rendered.
+
+The documented idioms — quoted string equality, numeric comparison of a numeric attribute, `'{attr}' == ''` — are unchanged.
+
+== Open questions
+
+. *Bare words as strings or as errors?*
+This proposal makes `{level} == high` valid.
+The stricter alternative (an unquoted operand must be a number, version, boolean or empty, otherwise the expression is malformed) catches more mistakes but rejects expressions that read naturally.
+. *Version type.*
+It fixes a real, documented use (`asciidoctor-version`) but adds a type.
+The alternative is a dedicated function-like form, outside the scope of this proposal.
+. *Should a type error be an error or a warning?*
+A warning keeps processing going, consistently with the rest of the preprocessor.
+. *`attribute-missing`.*
+Ruling it out for operands (rule 4) makes the result independent of a document setting; the alternative is to honor `drop-line` by dropping the directive.
+
+== Implementation notes (Asciidoctor.js)
+
+* Replace `EvalExpressionRx` with a small quote-aware tokenizer implementing rule 1 (the operator is the first operator token found outside quotes).
+* Replace `#resolveExprVal` with the typing of rule 2, returning tagged values (`{ type, value }`) rather than relying on JavaScript types: this keeps `none`, version and number distinct and makes rule 3 a lookup on the pair of types.
+* Replace `#evalOp` with the table of rule 3; report type errors through the reader's logger (`warn`) with the directive's cursor.
+* In `#preprocessConditionalDirective`, push a skipping frame for a malformed `ifeval` (rule 5) instead of returning without pushing.
+* Tests: one per row of <<_worked_examples>>, plus the grammar cases (quoted operators, empty operands, extra tokens).
+
+The branch `fix/ifeval-ruby-semantics` aligns Asciidoctor.js with the current Ruby behavior (number coercion, boolean and nil handling).
+If this proposal is adopted, that alignment is superseded: the two implementations should converge on these rules instead of on Ruby's accidental semantics.
